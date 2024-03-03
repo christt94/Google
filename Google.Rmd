@@ -1,0 +1,245 @@
+---
+title: "Google Data Analyst Capstone"
+author: "Gerard Christian Kuotu"
+date: "2024-03-02"
+output: word_document
+---
+
+
+
+# Case study: How does a bike-share navigate speedy success?
+## Part I- **Business Task:**
+* To analyze how annual members and casual riders use Cyclistic bikes differently, with the aim of designing marketing strategies to convert casual riders into annual members.
+
+
+## Part II- **Data Sources Used**
+* Previous 12 months of Cyclistic trip data provided by Motivate International Inc., ensuring compliance with data privacy standards (no PII involved).
+* Data includes ride lengths, start and end times, and bike types.
+
+## Part III- **Data Cleaning and Manipulation**
+1. Data Integrity and Cleaning: Checked for missing values, duplicates, and outliers in the trip data.
+```{r}
+# Load necessary packages
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(lubridate)
+```
+
+```{r}
+# Importing our dataset
+df <- read_csv("dataset/202004-divvy-tripdata.csv")
+```
+```{r}
+# Checking the structure of our datset
+str(df)
+```
+```{r}
+# Columns of our datset
+colnames(df)
+```
+```{r}
+# Checking for Missing Values
+df %>% summarize_all(~sum(is.na(.)))
+```
+```{r}
+# Deleting all rows with missing values
+cleaned_df <- na.omit(df)
+```
+
+```{r}
+# Checking for Duplicates
+sum(duplicated(cleaned_df))
+
+```
+
+
+```{r}
+
+# Calculate ride_length in minutes
+#cleaned_df$ride_length <- as.numeric(difftime(cleaned_df$ended_at, cleaned_df$started_at, units = "mins"))
+cleaned_df$ride_length <- as.numeric(difftime(cleaned_df$ended_at, cleaned_df$started_at, units = "mins"))
+```
+
+```{r}
+# Checking for Outliers
+ggplot(cleaned_df, aes(y = ride_length)) + 
+  geom_boxplot() +
+  labs(title = "Boxplot for Ride Length", y = "Ride Length (minutes)", x = "") +
+  theme_minimal()
+
+```
+```{r}
+# Statistical Calculation (IQR Method)
+# Calculate IQR
+Q1 <- quantile(cleaned_df$ride_length, 0.25, na.rm = TRUE)
+Q3 <- quantile(cleaned_df$ride_length, 0.75, na.rm = TRUE)
+IQR <- Q3 - Q1
+
+# Define bounds
+lower_bound <- Q1 - 1.5 * IQR
+upper_bound <- Q3 + 1.5 * IQR
+
+# Identify outliers
+outliers <- cleaned_df %>% 
+  filter(ride_length < lower_bound | ride_length > upper_bound)
+
+# Examine the outliers
+head(outliers)
+
+```
+
+
+
+2. Data Transformation: Standardized the format for dates and times, calculated ride lengths, and categorized rides by day of the week.
+```{r}
+# Formatting start and end date into a correct date format
+cleaned_df$started_at <- as.POSIXct(cleaned_df$started_at, format = "%Y-%m-%d %H:%M:%S")
+cleaned_df$ended_at <- as.POSIXct(cleaned_df$ended_at, format = "%Y-%m-%d %H:%M:%S")
+```
+```{r}
+# Extract the day of the week from the started_at column
+# %A gives the full weekday name; use %a for abbreviated name
+cleaned_df$start_day_of_week <- format(cleaned_df$started_at, "%A")
+
+# Similarly, for ended_at to categorize by end day (if needed)
+
+cleaned_df$end_day_of_week <- format(cleaned_df$ended_at, "%A")
+```
+```{r}
+
+# Display the head of the dataframe to verify
+head(cleaned_df[c("started_at", "start_day_of_week", "ended_at", "end_day_of_week")])
+```
+
+
+```{r}
+
+```
+3. Documentation: **All cleaning steps were documented, including the rationale for decisions made during the process.**
+
+## Part IV-Summary of analysis:
+
+1. **Descriptive Analysis:** Calculated average ride lengths and frequency of rides for both casual riders and annual members. Identified patterns in ride usage by time of day, day of the week, and season.
+
+```{r}
+# Calculating Average Ride Lengths and Frequency of Rides
+ride_summary <- cleaned_df %>%
+  group_by(member_casual) %>%
+  summarize(
+    average_ride_length = mean(ride_length),
+    total_rides = n()
+  )
+ride_summary
+```
+
+```{r}
+# Identifying Patterns in Ride Usage By Time of Day
+cleaned_df$time_of_day <- hour(cleaned_df$started_at)
+
+time_of_day_pattern <- cleaned_df %>%
+  group_by(member_casual, time_of_day) %>%
+  summarize(
+    average_ride_length = mean(ride_length),
+    total_rides = n(),
+    .groups = 'drop'
+  )
+time_of_day_pattern
+```
+```{r}
+# Identifying Patterns in Ride Usage By Day of the Week
+
+day_of_week_pattern <- cleaned_df %>%
+  group_by(member_casual, start_day_of_week) %>%
+  summarize(
+    average_ride_length = mean(ride_length),
+    total_rides = n(),
+    .groups = 'drop'
+  )
+day_of_week_pattern
+```
+
+```{r}
+# Identifying Patterns in Ride Usage By Season
+cleaned_df$season <- case_when(
+  month(cleaned_df$started_at) %in% c(12, 1, 2) ~ "Winter",
+  month(cleaned_df$started_at) %in% c(3, 4, 5) ~ "Spring",
+  month(cleaned_df$started_at) %in% c(6, 7, 8) ~ "Summer",
+  month(cleaned_df$started_at) %in% c(9, 10, 11) ~ "Fall",
+  TRUE ~ NA_character_
+)
+
+season_pattern <- cleaned_df %>%
+  group_by(member_casual, season) %>%
+  summarize(
+    average_ride_length = mean(ride_length),
+    total_rides = n(),
+    .groups = 'drop'
+  )
+season_pattern
+```
+**Final Comment**
+*These summaries give's insights into average ride lengths and frequency of rides for casual and annual members, as well as how ride usage patterns vary by time of day, day of the week, and season.*
+
+2. **Comparative Analysis:** Compared the ride behaviors between casual riders and annual members, focusing on ride length, frequency, and preferred bike types.
+
+```{r}
+# Preferred Bike Types
+bike_preference <- cleaned_df %>%
+  group_by(member_casual, rideable_type) %>%
+  summarize(
+    count = n(),
+    .groups = 'drop'
+  ) %>%
+  mutate(percentage = count / sum(count) * 100) # Calculate the percentage for better comparison
+
+print(bike_preference)
+
+```
+```{r}
+# Visualizations
+ggplot(cleaned_df, aes(x = member_casual, y = ride_length)) +
+  geom_boxplot() +
+  labs(title = "Comparison of Ride Lengths", x = "Rider Type", y = "Ride Length (minutes)")
+
+```
+```{r}
+# Frequency of Rides by Rider Type
+cleaned_df %>%
+  count(member_casual) %>%
+  ggplot(aes(x = member_casual, y = n, fill = member_casual)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Total Number of Rides by Rider Type", x = "Rider Type", y = "Total Rides")
+
+```
+```{r}
+# Preferred Bike Types
+bike_preference %>%
+  ggplot(aes(x = member_casual, y = percentage, fill = rideable_type)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Preferred Bike Types by Rider Type", x = "Rider Type", y = "Percentage (%)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+### Interpretation:
+
+* **Ride Length and Frequency:** Determine if there are significant differences in the average and median ride lengths between casual riders and annual members. Also, observe which group tends to take more rides.
+
+* **Preferred Bike Types:** Analyze which types of bikes are preferred by each group and if there's a significant difference in preferences.
+
+* This analysis provides insights into how casual riders and annual members differ in their ride behaviors, including how long they ride, how often they ride, and what types of bikes they prefer.
+
+* **Trend Identification:** Identified trends in ride usage over the year, noting any significant spikes or drops, possibly correlating with local events or weather conditions.
+
+
+
+### Recommendations: 
+
+1. **Targeted Marketing Campaigns:** Develop campaigns aimed at converting casual riders by highlighting the cost benefits and convenience of annual memberships for frequent short rides.
+2. **Weekend Promotions:** Offer weekend promotions or events targeted at casual riders to increase their engagement and familiarity with the service, coupled with incentives to convert to annual membership.
+3. **Enhanced Membership Benefits:** Introduce new benefits for annual members, such as discounts on longer rides during weekends or free rides for introducing a friend to the service, leveraging the casual riders' usage patterns.
+
+
+### Conclusion
+* By understanding the distinct usage patterns and preferences of casual riders and annual members, Cyclistic can tailor its marketing strategies to address the specific needs and motivations of casual riders, encouraging them to convert to annual memberships. Effective use of digital media, targeted promotions, and enhanced membership benefits will be key to maximizing the conversion rate and ensuring the speedy success of Cyclistic's bike-share program.
